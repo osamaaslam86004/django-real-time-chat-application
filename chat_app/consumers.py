@@ -11,20 +11,18 @@ from django.db.models import Q
 import threading
 
 from django.conf import settings
+
 # Retrieve Cloudinary credentials from settings
 cloud_name = settings.CLOUDINARY_CLOUD_NAME
 api_key = settings.CLOUDINARY_API_KEY
 api_secret = settings.CLOUDINARY_API_SECRET
 
 import cloudinary
-cloudinary.config(
-    cloud_name=cloud_name,
-    api_key=api_key,
-    api_secret=api_secret
-)
-import cloudinary.uploader
-from cloudinary.uploader import upload
 
+cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+import cloudinary.uploader
+
+# from cloudinary.uploader import upload
 
 
 MESSAGE_MAX_LENGTH = 10
