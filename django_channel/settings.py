@@ -11,6 +11,9 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from decouple import config
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,7 +23,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-58+&a=kzdzv$3ds24t5546rgre4t544t5re%dr@#*=_g2svmlciayiu"
+SECRET_KEY = config("SECRET_KEY")
+
+# Cloudinary credentials
+CLOUDINARY_CLOUD_NAME = config("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = config("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = config("CLOUDINARY_API_SECRET")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -50,6 +58,8 @@ INSTALLED_APPS += [
     "corsheaders",
     "rest_framework",  # Only for login purpose
     "django_extensions",  # for resetting database : python manage.py reset_db
+    "cloudinary_storage",
+    "cloudinary",
     "django_admin_inline_paginator",
 ]
 

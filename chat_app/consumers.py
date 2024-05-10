@@ -9,17 +9,22 @@ import uuid
 from .models import Profile
 from django.db.models import Q
 import threading
-import cloudinary
 
+from django.conf import settings
+# Retrieve Cloudinary credentials from settings
+cloud_name = settings.CLOUDINARY_CLOUD_NAME
+api_key = settings.CLOUDINARY_API_KEY
+api_secret = settings.CLOUDINARY_API_SECRET
+
+import cloudinary
 cloudinary.config(
-    cloud_name="dh8vfw5u0",
-    api_key="667912285456865",
-    api_secret="QaF0OnEY-W1v2GufFKdOjo3KQm8",
-    # api_proxy="http://proxy.server:3128",
+    cloud_name=cloud_name,
+    api_key=api_key,
+    api_secret=api_secret
 )
 import cloudinary.uploader
 from cloudinary.uploader import upload
-import base64
+
 
 
 MESSAGE_MAX_LENGTH = 10
