@@ -7,11 +7,20 @@ from channels.security.websocket import AllowedHostsOriginValidator
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_channel.settings")
 
-application = ProtocolTypeRouter({
-  "http": get_asgi_application(),
-  "websocket": AllowedHostsOriginValidator(AuthMiddlewareStack(
-        URLRouter(
-            chat_app.routing.websocket_urlpatterns
-        )
-    )),
-})
+
+application = ProtocolTypeRouter(
+    {
+        "http": get_asgi_application(),
+        "websocket": AllowedHostsOriginValidator(
+            AuthMiddlewareStack(URLRouter(chat_app.routing.websocket_urlpatterns))
+        ),
+    }
+)
+
+
+# application = ProtocolTypeRouter(
+#     {
+#         "http": get_asgi_application(),
+#         "websocket": URLRouter(chat_app.routing.websocket_urlpatterns),
+#     }
+# )
