@@ -21,8 +21,7 @@ import cloudinary
 
 cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
 import cloudinary.uploader
-
-# from cloudinary.uploader import upload
+from cloudinary.uploader import upload
 
 
 MESSAGE_MAX_LENGTH = 10
