@@ -1,22 +1,18 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from .models import *
+from chat_app.models import *
 from django.http.response import HttpResponse, HttpResponseRedirect
 from django.contrib import messages
+import cloudinary.uploader
+from django.http import JsonResponse
+import magic, json
+from django.conf import settings
 
 # def room_name(request):
 #     return render(request, 'chat/enter_room_name.html')
 # def room(request, room_name):
 #     return render(request, 'chat/chat.html', {'room_name': room_name})
-
-
-def index(request):
-    return render(request, "chat/index.html")
-
-
-def room(request, room_name):
-    return render(request, "chat/room.html", {"room_name": room_name})
 
 
 def home(request):
@@ -90,6 +86,10 @@ def friend_list(request):
     return render(request, "chat/friend_list.html", {"user_list": all_friends})
 
 
+import os
+from urllib.parse import urlparse
+
+
 @login_required
 def start_chat(request, room_name):
     current_user = request.user
@@ -106,9 +106,32 @@ def start_chat(request, room_name):
             if chat_user_pair.user1.username == current_user.username
             else chat_user_pair.user1
         )
-        fetch_all_message = ChatMessage.objects.filter(
-            chat_session__id=room_name[5:]
-        ).order_by("message_detail__timestamp")
+
+        fetch_all_message = (
+            ChatMessage.objects.filter(chat_session__id=room_name[5:])
+            .order_by("message_detail__timestamp")
+            .select_related("chat_session")
+        )
+
+        fetch_messages_with_url = fetch_all_message.filter(~Q(message_detail__url=None))
+
+        for message in fetch_all_message:
+            if "url" in message.message_detail:
+                url = message.message_detail["url"]
+                path = urlparse(url).path
+                fileExtension = os.path.splitext(path)[1]
+                print(f"file extension ------------------------: {fileExtension}")
+                print(
+                    f"file extension ---------------------------------------------------------------------------"
+                )
+                # Dynamically create fileExtension as an attribute on ChatMessage
+                message.fileExtension = fileExtension
+                print(
+                    f"file extension ------------------------: {message.message_detail}----{message.fileExtension }"
+                )
+            else:
+                message.file_Extension = None
+
         return render(
             request,
             "chat/start_chat.html",
@@ -126,3 +149,72 @@ def get_last_message(request):
     session_id = request.data.get("room_id")
     qs = ChatMessage.objects.filter(chat_session__id=session_id)[10]
     return qs
+
+
+def upload_file(request):
+    if request.method == "POST":
+        if request.FILES.get("file"):
+            uploaded_file = request.FILES["file"]
+
+            # Create a magic object
+            magic_instance = magic.Magic(mime=True)
+            # Get the MIME type using the magic object and the file contents
+            mime_type = magic_instance.from_buffer(uploaded_file.read(2048))
+            print(f"mime_type-------------------------: {mime_type}")
+            uploaded_file.seek(0)  # Move the file pointer to the start of the file
+            # other Cloudinary will raise exception: Empty File
+
+            # Check if the MIME type starts with 'image/'
+            if (
+                mime_type.startswith("image/")
+                or mime_type.startswith("vedio/")
+                or mime_type.startswith("application/x-mpeg")
+            ):
+                return JsonResponse({"error": "incorrect file type"}, status=400)
+
+            # Check if the MIME type is with 'application/octet-stream' or not in MIME_TYPE_IN_JSON
+            # Load the JSON data from the file or Django settings
+
+            mime_types = settings.MIME_TYPE
+            key = "None"
+            # Check if 'application/octet-stream' is in the MIME types
+            if mime_type in mime_types.values():
+                # Find the key corresponding to 'application/octet-stream'
+                for k, value in mime_types.items():
+                    # Send the key to the client
+                    if value == mime_type:
+                        key = k
+                        print(f"key___________________________________________{key}")
+                        break
+            else:
+                key = "None"
+
+            try:
+                # Upload the file to Cloudinary
+                response = cloudinary.uploader.upload(
+                    uploaded_file, resource_type="auto"
+                )
+                print(f"response_while_uploading: {response}")
+
+                # Get the secure URL for the uploaded file
+                uploaded_file_url = response["secure_url"]
+
+                # Return the URL as JSON response
+                return JsonResponse({"file_url": uploaded_file_url, "key": key})
+
+            except cloudinary.exceptions.Error as e:
+                print(f"Cloudinary upload error: {e}")
+                # If upload fails, return an error response
+                return JsonResponse(
+                    {"error": "Error uploading file to Cloudinary"}, status=500
+                )
+
+        else:
+            # If no file was uploaded, return a bad request error
+            return JsonResponse(
+                {"error": "File upload failed, request does not contain a file"},
+                status=400,
+            )
+    else:
+        # If request method is not POST, return method not allowed error
+        return JsonResponse({"error": "Method not allowed"}, status=405)

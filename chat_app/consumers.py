@@ -1,16 +1,14 @@
-from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.generic.websocket import WebsocketConsumer
 import json
-from asgiref.sync import async_to_sync
-from datetime import datetime
-from chat_app.models import ChatSession, ChatMessage
-from channels.db import database_sync_to_async
 import uuid
-from .models import Profile
-from django.db.models import Q
 import threading
-
 from django.conf import settings
+from datetime import datetime
+from channels.generic.websocket import AsyncWebsocketConsumer
+from asgiref.sync import async_to_sync
+from channels.db import database_sync_to_async
+from django.db.models import Q
+from chat_app.models import ChatSession, ChatMessage, Profile
+
 
 # Retrieve Cloudinary credentials from settings
 cloud_name = settings.CLOUDINARY_CLOUD_NAME
@@ -44,6 +42,7 @@ MESSAGE_TYPE = {
     "ALL_MESSAGE_READ": "ALL_MESSAGE_READ",
     "ERROR_OCCURED": "ERROR_OCCURED",
     "IMAGE_MESSAGE": "IMAGE_MESSAGE",
+    "FILE_MESSAGE": "FILE_MESSAGE",
 }
 
 
@@ -209,7 +208,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "msg_type": MESSAGE_TYPE["TEXT_MESSAGE"],
                     },
                 )
-                current_user_id = await self.save_text_message(msg_id, message)
+                current_user_id = await self.save_message(
+                    msg_id, message=message, file_url=None, resized_image_url=None
+                )
                 await self.channel_layer.group_send(
                     f"personal__{current_user_id}",
                     {
@@ -240,6 +241,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif msg_type == MESSAGE_TYPE["IMAGE_MESSAGE"]:
             # Handle image messages
             await self.handle_image_message(data)
+
+        elif msg_type == MESSAGE_TYPE["FILE_MESSAGE"]:
+            # Handle FILE messages
+            await self.handle_file_message(data)
 
         elif msg_type == MESSAGE_TYPE["MESSAGE_READ"]:
             msg_id = data["msg_id"]
@@ -289,7 +294,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             )
 
-        else:
+        elif event["msg_type"] == MESSAGE_TYPE["IMAGE_MESSAGE"]:
             await self.send(
                 text_data=json.dumps(
                     {
@@ -298,6 +303,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "user": event["user"],
                         "timestampe": str(datetime.now()),
                         "msg_id": event["msg_id"],
+                    }
+                )
+            )
+        else:
+            # Handle file messages
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "msg_type": MESSAGE_TYPE["FILE_MESSAGE"],
+                        "file_url": event["file_url"],
+                        "user": event["user"],
+                        "msg_id": event["msg_id"],
+                        "key": event["key"],
+                        "timestampe": str(datetime.now()),
                     }
                 )
             )
@@ -371,7 +390,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(f"messae awaiting to be sent to group_____________________")
 
             # Save the image message to the database
-            current_user_id = await self.save_image_message(msg_id, resized_image_url)
+            current_user_id = await self.save_message(
+                msg_id, message=None, file_url=None, resized_image_url=resized_image_url
+            )
             print(f"current_user_id_____________________{current_user_id}")
 
             await self.channel_layer.group_send(
@@ -383,25 +404,83 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 },
             )
 
+    async def handle_file_message(self, data):
+        file_url = data.get("file_url")
+        user = data.get("user")
+        key = data.get("key")
+
+        # Generate a unique ID for the message
+        msg_id = str(uuid.uuid4())
+
+        # Broadcast the file URL to the group
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "chat_message",
+                "file_url": file_url,
+                "msg_id": msg_id,
+                "key": key,
+                "user": user,
+                "msg_type": MESSAGE_TYPE["FILE_MESSAGE"],
+            },
+        )
+
+        # Save the image message to the database
+        current_user_id = await self.save_message(
+            msg_id=msg_id, message=None, file_url=file_url, resized_image_url=None
+        )
+        print(f"current_user_id_____________________{current_user_id}")
+
+        await self.channel_layer.group_send(
+            f"personal__{current_user_id}",
+            {
+                "type": "message_counter",
+                "user_id": self.user.id,
+                "current_user_id": current_user_id,
+            },
+        )
+
     @database_sync_to_async
-    def save_text_message(self, msg_id, message):
+    def save_message(self, msg_id, message=None, file_url=None, resized_image_url=None):
         session_id = self.room_name[5:]
         session_inst = ChatSession.objects.select_related("user1", "user2").get(
             id=session_id
         )
-        message_json = {
-            "msg": message,
-            "read": False,
-            "timestamp": str(datetime.now()),
-            session_inst.user1.username: False,
-            session_inst.user2.username: False,
-        }
-        ChatMessage.objects.create(
+        if message is not None:
+            message_json = {
+                "msg": message,
+                "read": False,
+                "timestamp": str(datetime.now()),
+                session_inst.user1.username: False,
+                session_inst.user2.username: False,
+            }
+        elif file_url is not None:
+            message_json = {
+                "url": file_url,
+                "read": False,
+                "timestamp": str(datetime.now()),
+                session_inst.user1.username: False,
+                session_inst.user2.username: False,
+            }
+        else:
+            message_json = {
+                "image_url": resized_image_url,
+                "read": False,
+                "timestamp": str(datetime.now()),
+                session_inst.user1.username: False,
+                session_inst.user2.username: False,
+            }
+
+        # Create the ChatMessage object
+        chat_message = ChatMessage(
             id=msg_id,
             chat_session=session_inst,
             user=self.user,
             message_detail=message_json,
         )
+
+        # Save the ChatMessage object to the database
+        chat_message.save()
         return (
             session_inst.user2.id
             if self.user == session_inst.user1
@@ -416,27 +495,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def read_all_msg(self, room_id, user):
         return ChatMessage.all_msg_read(room_id, user)
 
-    @database_sync_to_async
-    def save_image_message(self, msg_id, image_url):
-        session_id = self.room_name[5:]
-        session_inst = ChatSession.objects.select_related("user1", "user2").get(
-            id=session_id
-        )
-        message_json = {
-            "image_url": image_url,
-            "read": False,
-            "timestamp": str(datetime.now()),
-            session_inst.user1.username: False,
-            session_inst.user2.username: False,
-        }
-        ChatMessage.objects.create(
-            id=msg_id,
-            chat_session=session_inst,
-            user=self.user,
-            message_detail=message_json,
-        )
-        return (
-            session_inst.user2.id
-            if self.user == session_inst.user1
-            else session_inst.user1.id
-        )
+    # @database_sync_to_async
+    # def save_image_message(self, msg_id, image_url):
+    #     session_id = self.room_name[5:]
+    #     session_inst = ChatSession.objects.select_related("user1", "user2").get(
+    #         id=session_id
+    #     )
+    #     message_json = {
+    #         "image_url": image_url,
+    #         "read": False,
+    #         "timestamp": str(datetime.now()),
+    #         session_inst.user1.username: False,
+    #         session_inst.user2.username: False,
+    #     }
+    #     ChatMessage.objects.create(
+    #         id=msg_id,
+    #         chat_session=session_inst,
+    #         user=self.user,
+    #         message_detail=message_json,
+    #     )
+    #     return (
+    #         session_inst.user2.id
+    #         if self.user == session_inst.user1
+    #         else session_inst.user1.id
+    #     )

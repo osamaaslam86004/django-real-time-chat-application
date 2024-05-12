@@ -1,9 +1,12 @@
+{% load static %}
 <!DOCTYPE html>
 <html>
 
 <head>
     <meta charset="utf-8" />
     <title>Chat Room</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+
     <style>
         div.scroll {
             margin: 4px, 4px;
@@ -39,6 +42,7 @@
             background: #b81f1f;
         }
 
+
         .chat_box {
             border: 1px solid black;
             width: 50%;
@@ -58,28 +62,66 @@
         <div id="chat-log" class="scroll">
             {% for msg in fetch_all_message %}
             <p id="{{ msg.id }}" class="chat_box" style="background-color: {{ box_color }}">
-                <small><b class="check_user">{{ msg.user.username }}</b> - {{ msg.message_detail.timestamp |
-                    convert_date|date:"M d'Y f" }}</small>
+                <small><b class="check_user">{{ msg.user.username }}</b> -
+                    {{ msg.message_detail.timestamp |convert_date|date:"M d'Y f" }}</small>
                 <br />
                 {% if msg.message_detail.msg %}
                 <span style="padding: 7px; color: #ffffff; font-weight: bold;"> • {{ msg.message_detail.msg }}</span>
-                {% else %}
+                {% elif msg.message_detail.image_url %}
                 <img id="img_{{ msg.id }}" src="{{ msg.message_detail.image_url }}">
-                {% endif %}
-                <br />
-                {% if msg.user == request.user %}
-                <small id="as_read"
-                    style="padding-left: 95%; {% if msg.message_detail.read %}color: rgb(8, 255, 8);{% else %}color: #bbb8b8{% endif %} font-weight: bold;">✔✔</small>
-                {% endif %}
+                {% else %}
+                <!-- Wrap the icon within an anchor tag -->
+                {% if msg.fileExtension == '.docx' or msg.fileExtension == '.doc' %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-word-solid.svg' %}" style="width: 75px; height:75px">
+                </a>
+                {% elif msg.fileExtension == '.ppt' or msg.fileExtension == '.pptx' %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-powerpoint-solid.svg' %}" style="width: 75px; height:75px">
+                </a>
+                {% elif msg.fileExtension == '.csv' %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-csv-solid.svg' %}" style="width: 75px; height:75px">
+                </a>
+                {% elif msg.fileExtension == '.pdf' %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-pdf-solid.svg' %}" style="width: 75px; height:75px">
+                </a>
+                {% elif msg.fileExtension == '.txt' %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-solid.svg' %}" style="width: 75px; height:75px">
+                    {% else %}
+                    <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                        <img src="{% static 'images/file-regular.svg' %}" style="width: 75px; height:75px">
+                    </a>
+                    {% endif %}
+                    {% endif %}
+                    <br />
+                    {% if msg.user == request.user %}
+                    <small id="as_read" style="padding-left: 95%; 
+                {% if msg.message_detail.read %} 
+                color: rgb(8, 255, 8);{% else %}color: #bbb8b8{% endif %} font-weight: bold;">✔✔</small>
+                    {% endif %}
             </p>
             {% endfor %}
         </div><br>
 
         <!-- Update your HTML form -->
-        <input id="chat-message-input" type="text" placeholder="Enter Message..." autofocus
-            style="width: 50%; padding: 8px;">
-        <input id="file-input" type="file"> <!-- Add file input field -->
-        <input id="chat-message-submit" type="button" value="Send" style="padding: 6px;">
+
+        <div>
+            <div style="position: relative;">
+                <input id="chat-message-input" type="text" placeholder="Enter Message..." autofocus
+                    style="width: calc(50% - 60px); padding: 8px 40px 8px 8px;">
+                <button id="image-upload-btn">📷</button>
+                <button id="file-upload-btn"><i class="fas fa-file"></i></button>
+                <button id="submit-btn">Send</button>
+            </div>
+
+            <input id="image-input" type="file" style="display: none;"> <!-- Add image-type input field -->
+            <input id="file-input" type="file" style="display: none;"> <!-- Add non-image type input field -->
+
+        </div>
+
 
     </div>
     {{ room_name|json_script:"room_name" }}
@@ -110,7 +152,6 @@
     var messageBody = document.querySelector('.scroll');
     messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
 
-
     const add_element = (data, box_color) => {
         const user = data.user === '{{request.user.username}}' ? "You" : data.user;
         const error_msg =
@@ -133,18 +174,51 @@
         // Check if the message is an image message
         else if (data.msg_type === 'IMAGE_MESSAGE') {
             element = `
-            <p id="${data.msg_id}" class="chat_box" style="background-color: ${box_color};">
-                <small><b>${user}</b> - ${data.timestampe}</small><br/>
-                <img src="${data.message}" alt="Image" style="max-width: 100%; max-height: 200px;"><br/>
-                ${add_read}
-            </p>
-        `;
+        <p id="${data.msg_id}" class="chat_box" style="background-color: ${box_color};">
+            <small><b>${user}</b> - ${data.timestampe}</small><br/>
+            <img src="${data.message}" alt="Image" style="max-width: 100%; max-height: 200px;"><br/>
+            ${add_read}
+        </p>
+    `;
         }
+        // Check if the message is an file message
+        else if (data.msg_type === 'FILE_MESSAGE') {
+            // Determine icon based on file extension
+            let icon = '';
+            let fileExtension = data.key
+
+            if (fileExtension === 'txt') {
+                icon = '<i class="fas fa-file-alt"></i>'; // Icon for text files
+
+            } else if (fileExtension === 'docx' || fileExtension === 'doc') {
+                icon = '<i class="fas fa-file-word"></i>'; // Icon for Word documents
+                console.log({ "url": data.file_url })
+            } else if (fileExtension === 'csv') {
+                icon = '<i class="fas fa-file-csv"></i>'; // Icon for CSV files
+            } else if (fileExtension === 'ppt' || fileExtension === 'pptx') {
+                icon = '<i class="fas fa-file-powerpoint"></i>'; // Icon for PowerPoint files
+            } else if (fileExtension === 'zip') {
+                icon = '<i class="fas fa-file-archive"></i>'; // Icon for ZIP files
+            } else {
+                icon = '<i class="fas fa-file"></i>'; // Default icon for other file types
+            }
+
+            console.log({ "url": data.file_url })
+            element = `
+                <p id="${data.msg_id}" class="chat_box" style="background-color: ${box_color};">
+                    <small><b>${user}</b> - ${data.timestampe}</small><br/>
+                    <a href="#" onclick="window.open('${data.file_url}', '_blank')"><i class="fas fa-3x">${icon}</i></a><br/> 
+                    ${add_read}
+                </p>`;
+        }
+
 
         // Append the element to the chat log
         document.querySelector('#chat-log').innerHTML += element;
         messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
     };
+
+
 
 
 
@@ -195,6 +269,12 @@
             check_read(data.user, data.msg_id)
         }
         else if (data.msg_type === 'IMAGE_MESSAGE') {
+            box_color = '#7d7dee'
+            add_element(data, box_color)
+            check_read(data.user, data.msg_id)
+
+        }
+        else if (data.msg_type === 'FILE_MESSAGE') {
             box_color = '#7d7dee'
             add_element(data, box_color)
             check_read(data.user, data.msg_id)
@@ -259,12 +339,14 @@
         isTyping = false
     }
 
-    document.querySelector('#chat-message-submit').onclick = (e) => {
-        const messageInputDom = document.querySelector('#chat-message-input');
-        const message = messageInputDom.value;
+    document.querySelector('#image-upload-btn').onclick = () => {
+        // Trigger file input click
+        document.getElementById('image-input').click();
+    };
 
+    document.querySelector('#image-input').onchange = (e) => {
         // Function to handle file upload
-        const fileInput = document.getElementById('file-input')
+        const fileInput = document.getElementById('image-input')
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
             const reader = new FileReader();
@@ -278,16 +360,66 @@
                 chatSocket.send(JSON.stringify(message)); // Send the image data to the server
             };
             reader.readAsDataURL(file); // Read the file as data URL
+        }
+    };
+
+    document.querySelector('#file-upload-btn').onclick = () => {
+        // Trigger file input click
+        document.getElementById('file-input').click();
+    };
+    document.querySelector('#file-input').onchange = (e) => {
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+
+        // Check if a file was selected
+        if (file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            // Get the current URL path
+            const currentPath = window.location.pathname;
+            // Construct the upload URL
+            const uploadUrl = currentPath + 'upload-file/';
+            // Send the file to the Django view for validation and processing
+            fetch(uploadUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'), // Include CSRF token
+                    'sessionid': getCookie('sessionid') // Include sessionid
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    // Broadcast the URL to the chat group
+                    const message = {
+                        'file_url': data.file_url,
+                        'key': data.key,
+                        'msg_type': 'FILE_MESSAGE',
+                        'user': '{{ request.user.username }}'
+                    };
+                    chatSocket.send(JSON.stringify(message));
+                })
+                .catch(error => console.error('Error uploading file:', error));
         } else {
-            // If no file is selected, send the text messa
+            alert('Please select a non-image file.');
+        }
+    };
+
+
+    // If no file is selected, send the text messa
+    document.querySelector('#submit-btn').onclick = () => {
+        const messageInputDom = document.querySelector('#chat-message-input');
+        const message = messageInputDom.value.trim();
+        if (message) {
             chatSocket.send(JSON.stringify({
                 'message': message,
                 'msg_type': 'TEXT_MESSAGE',
                 'user': '{{request.user.username}}'
             }));
+            messageInputDom.value = '';
         }
-        messageInputDom.value = '';
     };
+
 
 
 
@@ -296,5 +428,23 @@
         if (check_user[i].innerText === '{{ request.user.username }}') {
             check_user[i].innerText = 'You'
         }
+    }
+
+
+
+    // Function to get the CSRF token and sessionid from the cookies
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
 </script>

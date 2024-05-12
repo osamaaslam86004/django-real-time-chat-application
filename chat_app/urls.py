@@ -8,6 +8,5 @@ urlpatterns = [
     path("create_friend/", create_friend, name="create_friend"),
     path("friend_list/", friend_list, name="friend_list"),
     path("chat/<str:room_name>/", start_chat, name="start_chat"),
-    # path("", index, name="index"),
-    # path("<str:room_name>/", room, name="room"),
+    path("chat/chat_1/upload-file/", upload_file, name="upload_file"),
 ]
