@@ -1,13 +1,17 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
-from chat_app.models import *
+from django.http import JsonResponse
+import magic
+from django.conf import settings
+import os
+from urllib.parse import urlparse
 from django.http.response import HttpResponse, HttpResponseRedirect
 from django.contrib import messages
 import cloudinary.uploader
-from django.http import JsonResponse
-import magic, json
-from django.conf import settings
+from chat_app.forms import VideoUploadForm
+from django.db.models import Q
+from chat_app.models import ChatMessage, ChatSession, User
+
 
 # def room_name(request):
 #     return render(request, 'chat/enter_room_name.html')
@@ -84,10 +88,6 @@ def friend_list(request):
         all_friends.append(data)
 
     return render(request, "chat/friend_list.html", {"user_list": all_friends})
-
-
-import os
-from urllib.parse import urlparse
 
 
 @login_required
@@ -215,6 +215,40 @@ def upload_file(request):
                 {"error": "File upload failed, request does not contain a file"},
                 status=400,
             )
+    else:
+        # If request method is not POST, return method not allowed error
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def upload_video(request):
+    if request.method == "POST":
+        form = VideoUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            # Process the uploaded video file
+            video_file = form.cleaned_data["video_file"]
+            # Save the video file or perform any other necessary actions
+            try:
+                # Upload the file to Cloudinary
+                response = cloudinary.uploader.upload(video_file, resource_type="auto")
+                print(f"response_while_uploading: {response}")
+
+                # Get the secure URL for the uploaded file
+                uploaded_file_url = response["secure_url"]
+
+                # Return the URL as JSON response
+                return JsonResponse({"file_url": uploaded_file_url})
+
+            except cloudinary.exceptions.Error as e:
+                print(f"Cloudinary upload error: {e}")
+                # If upload fails, return an error response
+                return JsonResponse(
+                    {"error": "Error uploading file to Cloudinary"}, status=500
+                )
+
+        else:
+            form = VideoUploadForm()
+
+        return render(request, "upload_video.html", {"form": form})
     else:
         # If request method is not POST, return method not allowed error
         return JsonResponse({"error": "Method not allowed"}, status=405)

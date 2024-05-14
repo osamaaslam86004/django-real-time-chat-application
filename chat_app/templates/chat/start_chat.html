@@ -349,17 +349,22 @@
         const fileInput = document.getElementById('image-input')
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
-            const reader = new FileReader();
-            reader.onload = function (event) {
-                const imageData = event.target.result;
-                const message = { // Construct a message object containing the image data
-                    'image': imageData,
-                    'msg_type': 'IMAGE_MESSAGE',
-                    'user': '{{ request.user.username }}'
+            if (file.type.startsWith('image/')) { // Check if the file type starts with 'image/'
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    const imageData = event.target.result;
+                    const message = { // Construct a message object containing the image data
+                        'image': imageData,
+                        'msg_type': 'IMAGE_MESSAGE',
+                        'user': '{{ request.user.username }}'
+                    };
+                    chatSocket.send(JSON.stringify(message)); // Send the image data to the server
                 };
-                chatSocket.send(JSON.stringify(message)); // Send the image data to the server
-            };
-            reader.readAsDataURL(file); // Read the file as data URL
+                reader.readAsDataURL(file); // Read the file as data URL
+            } else {
+                alert('Please upload an image file.'); // Display an error message if the file is not an image
+                fileInput.value = ''; // Clear the file input field
+            }
         }
     };
 
