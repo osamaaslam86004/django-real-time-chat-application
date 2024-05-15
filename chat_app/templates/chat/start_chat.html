@@ -6,7 +6,8 @@
     <meta charset="utf-8" />
     <title>Chat Room</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
     <style>
         div.scroll {
             margin: 4px, 4px;
@@ -59,7 +60,7 @@
     <h2>🧒 | {{opposite_user.username | title}}
     </h2>
     <div>
-        <div id="chat-log" class="scroll">
+        <div id=" chat-log" class="scroll">
             {% for msg in fetch_all_message %}
             <p id="{{ msg.id }}" class="chat_box" style="background-color: {{ box_color }}">
                 <small><b class="check_user">{{ msg.user.username }}</b> -
@@ -69,7 +70,7 @@
                 <span style="padding: 7px; color: #ffffff; font-weight: bold;"> • {{ msg.message_detail.msg }}</span>
                 {% elif msg.message_detail.image_url %}
                 <img id="img_{{ msg.id }}" src="{{ msg.message_detail.image_url }}">
-                {% else %}
+                {% elif msg.message_detail.file_url%}
                 <!-- Wrap the icon within an anchor tag -->
                 {% if msg.fileExtension == '.docx' or msg.fileExtension == '.doc' %}
                 <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
@@ -95,7 +96,20 @@
                         <img src="{% static 'images/file-regular.svg' %}" style="width: 75px; height:75px">
                     </a>
                     {% endif %}
+                    {% else %}
+                    <video id="my-video" class="video-js" controls preload="auto" width="75" height="75" poster=""
+                        data-setup="{}">
+                        <source src="{{msg.message_detail.video_url}}" type="video/mp4" />
+                        <p class="vjs-no-js">
+                            To view this video please enable JavaScript, and consider upgrading to a
+                            web browser that
+                            <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+                        </p>
+                    </video>
                     {% endif %}
+
+
+
                     <br />
                     {% if msg.user == request.user %}
                     <small id="as_read" style="padding-left: 95%; 
@@ -114,11 +128,14 @@
                     style="width: calc(50% - 60px); padding: 8px 40px 8px 8px;">
                 <button id="image-upload-btn">📷</button>
                 <button id="file-upload-btn"><i class="fas fa-file"></i></button>
+                <button id="video-upload-btn"><i class="fa-solid fa-video"></i></button>
                 <button id="submit-btn">Send</button>
             </div>
 
             <input id="image-input" type="file" style="display: none;"> <!-- Add image-type input field -->
             <input id="file-input" type="file" style="display: none;"> <!-- Add non-image type input field -->
+            <input type="file" id="video-input" name="video" accept="video/*" style="display: none;">
+
 
         </div>
 
@@ -127,6 +144,7 @@
     {{ room_name|json_script:"room_name" }}
 
 </body>
+<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 
 </html>
 
@@ -206,18 +224,42 @@
             console.log({ "url": data.file_url })
             element = `
                 <p id="${data.msg_id}" class="chat_box" style="background-color: ${box_color};">
-                    <small><b>${user}</b> - ${data.timestampe}</small><br/>
+                    <small><b>${data.user}</b> - ${data.timestampe}</small><br/>
                     <a href="#" onclick="window.open('${data.file_url}', '_blank')"><i class="fas fa-3x">${icon}</i></a><br/> 
                     ${add_read}
                 </p>`;
         }
 
+        else {
+            element = `
+            <p id="${data.msg_id}" class="chat_box" style="background-color: ${box_color};">
+                <small><b>${data.user}</b> - ${data.timestampe}</small><br/>
+                <video
+                    id="my-video"
+                    class="video-js"
+                    controls
+                    preload="auto"
+                    width="75"
+                    height="75"
+                    poster=""
+                    data-setup="{}"
+                >
+                    <source src="${data.video_url}" type="video/mp4" />
+                    <p class="vjs-no-js">
+                        To view this video please enable JavaScript, and consider upgrading to a
+                        web browser that
+                        <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+                    </p><br/>
+                    ${add_read}
+                </video>
+            </p>`;
+        }
 
         // Append the element to the chat log
-        document.querySelector('#chat-log').innerHTML += element;
+        messageBody.innerHTML += element; // Ensure messageBody is defined and accessible
+
         messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
     };
-
 
 
 
@@ -275,6 +317,12 @@
 
         }
         else if (data.msg_type === 'FILE_MESSAGE') {
+            box_color = '#7d7dee'
+            add_element(data, box_color)
+            check_read(data.user, data.msg_id)
+
+        }
+        else if (data.msg_type === 'VIDEO_MESSAGE') {
             box_color = '#7d7dee'
             add_element(data, box_color)
             check_read(data.user, data.msg_id)
@@ -372,6 +420,7 @@
         // Trigger file input click
         document.getElementById('file-input').click();
     };
+
     document.querySelector('#file-input').onchange = (e) => {
         const fileInput = document.getElementById('file-input');
         const file = fileInput.files[0];
@@ -393,7 +442,16 @@
                     'sessionid': getCookie('sessionid') // Include sessionid
                 }
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        console.log(response.json());
+                        return response.json().then(data => {
+                            throw new Error(data.error);
+                        });
+                    }
+                })
                 .then(data => {
                     // Broadcast the URL to the chat group
                     const message = {
@@ -404,9 +462,56 @@
                     };
                     chatSocket.send(JSON.stringify(message));
                 })
-                .catch(error => console.error('Error uploading file:', error));
+                .catch(error => {
+                    console.error('Error uploading file:', error.message); // Display the error message
+                    alert('Error uploading file: ' + error.message); // Show an alert with the error message
+                });
         } else {
             alert('Please select a non-image file.');
+        }
+    };
+
+
+
+    /// for handling with user uploaded video files
+    document.querySelector('#video-upload-btn').onclick = () => {
+        // Trigger file input click
+        document.getElementById('video-input').click();
+    };
+    document.querySelector('#video-input').onchange = (e) => {
+        const fileInput = document.getElementById('video-input');
+        const file = fileInput.files[0];
+
+        // Check if a file was selected
+        if (file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            // Get the current URL path
+            const currentPath = window.location.pathname;
+            // Construct the upload URL
+            const uploadUrl = currentPath + 'upload-video/';
+            // Send the file to the Django view for validation and processing
+            fetch(uploadUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'), // Include CSRF token
+                    'sessionid': getCookie('sessionid') // Include sessionid
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    // Broadcast the URL to the chat group
+                    const message = {
+                        'video_url': data.video_url,
+                        'msg_type': 'VIDEO_MESSAGE',
+                        'user': '{{ request.user.username }}'
+                    };
+                    chatSocket.send(JSON.stringify(message));
+                })
+                .catch(error => console.error('Error uploading VIDEO:', error));
+        } else {
+            alert('Please select a file WITH VIDEO FILE EXTENSION.');
         }
     };
 

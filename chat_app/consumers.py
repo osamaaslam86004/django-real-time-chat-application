@@ -43,6 +43,7 @@ MESSAGE_TYPE = {
     "ERROR_OCCURED": "ERROR_OCCURED",
     "IMAGE_MESSAGE": "IMAGE_MESSAGE",
     "FILE_MESSAGE": "FILE_MESSAGE",
+    "VIDEO_MESSAGE": "VIDEO_MESSAGE",
 }
 
 
@@ -197,31 +198,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if msg_type == MESSAGE_TYPE["TEXT_MESSAGE"]:
             if len(message) <= MESSAGE_MAX_LENGTH:
-                msg_id = uuid.uuid4()
-                await self.channel_layer.group_send(
-                    self.room_group_name,
-                    {
-                        "type": "chat_message",
-                        "message": message,
-                        "user": user,
-                        "msg_id": str(msg_id),
-                        "msg_type": MESSAGE_TYPE["TEXT_MESSAGE"],
-                    },
-                )
-                current_user_id = await self.save_message(
-                    msg_id, message=message, file_url=None, resized_image_url=None
-                )
-                await self.channel_layer.group_send(
-                    f"personal__{current_user_id}",
-                    {
-                        "type": "message_counter",
-                        "user_id": self.user.id,  # user_id is the id of user who sent the message to all others in a group
-                        "current_user_id": current_user_id,
-                    },
-                )
-                print(
-                    f"current_user_id_in_personal_text_message: personal__{current_user_id}_____________________{self.user.id}"
-                )
+                # Handle text messages only
+                await self.handle_text_message(data)
 
             else:
                 await self.send(
@@ -353,6 +331,42 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def handle_text_message(self, data):
+        message = data.get("message")
+        user = data.get("user")
+
+        # create a message id for this text message
+        msg_id = uuid.uuid4()
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "chat_message",
+                "message": message,
+                "user": user,
+                "msg_id": str(msg_id),
+                "msg_type": MESSAGE_TYPE["TEXT_MESSAGE"],
+            },
+        )
+        current_user_id = await self.save_message(
+            msg_id,
+            message=message,
+            file_url=None,
+            resized_image_url=None,
+            video_url=None,
+        )
+        await self.channel_layer.group_send(
+            f"personal__{current_user_id}",
+            {
+                "type": "message_counter",
+                "user_id": self.user.id,  # user_id is the id of user who sent the message to all others in a group
+                "current_user_id": current_user_id,
+            },
+        )
+        print(
+            f"current_user_id_in_personal_text_message: personal__{current_user_id}: {self.user.id}"
+        )
+
     async def handle_image_message(self, data):
         file_data = data.get("image")
         if file_data:
@@ -391,7 +405,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Save the image message to the database
             current_user_id = await self.save_message(
-                msg_id, message=None, file_url=None, resized_image_url=resized_image_url
+                msg_id,
+                message=None,
+                file_url=None,
+                resized_image_url=resized_image_url,
+                video_url=None,
             )
             print(f"current_user_id_____________________{current_user_id}")
 
@@ -427,7 +445,49 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Save the image message to the database
         current_user_id = await self.save_message(
-            msg_id=msg_id, message=None, file_url=file_url, resized_image_url=None
+            msg_id=msg_id,
+            message=None,
+            file_url=file_url,
+            resized_image_url=None,
+            video_url=None,
+        )
+        print(f"current_user_id_____________________{current_user_id}")
+
+        await self.channel_layer.group_send(
+            f"personal__{current_user_id}",
+            {
+                "type": "message_counter",
+                "user_id": self.user.id,
+                "current_user_id": current_user_id,
+            },
+        )
+
+    async def handle_video_message(self, data):
+        video_url = data.get("video_url")
+        user = data.get("user")
+
+        # Generate a unique ID for the message
+        msg_id = str(uuid.uuid4())
+
+        # Broadcast the file URL to the group
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "chat_message",
+                "video_url": video_url,
+                "msg_id": msg_id,
+                "user": user,
+                "msg_type": MESSAGE_TYPE["VIDEO_MESSAGE"],
+            },
+        )
+
+        # Save the image message to the database
+        current_user_id = await self.save_message(
+            msg_id=msg_id,
+            message=None,
+            file_url=None,
+            resized_image_url=None,
+            video_url=video_url,
         )
         print(f"current_user_id_____________________{current_user_id}")
 
@@ -441,7 +501,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(self, msg_id, message=None, file_url=None, resized_image_url=None):
+    def save_message(
+        self,
+        msg_id,
+        message=None,
+        file_url=None,
+        resized_image_url=None,
+        video_url=None,
+    ):
         session_id = self.room_name[5:]
         session_inst = ChatSession.objects.select_related("user1", "user2").get(
             id=session_id
@@ -462,9 +529,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 session_inst.user1.username: False,
                 session_inst.user2.username: False,
             }
-        else:
+        elif resized_image_url is not None:
             message_json = {
                 "image_url": resized_image_url,
+                "read": False,
+                "timestamp": str(datetime.now()),
+                session_inst.user1.username: False,
+                session_inst.user2.username: False,
+            }
+        else:
+            message_json = {
+                "video_url": video_url,
                 "read": False,
                 "timestamp": str(datetime.now()),
                 session_inst.user1.username: False,

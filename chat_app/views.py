@@ -1,10 +1,12 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from urllib.parse import urlparse
+from django.views import View
 from django.http import JsonResponse
 import magic
 from django.conf import settings
 import os
-from urllib.parse import urlparse
 from django.http.response import HttpResponse, HttpResponseRedirect
 from django.contrib import messages
 import cloudinary.uploader
@@ -90,59 +92,60 @@ def friend_list(request):
     return render(request, "chat/friend_list.html", {"user_list": all_friends})
 
 
-@login_required
-def start_chat(request, room_name):
-    current_user = request.user
-    try:
-        check_user = ChatSession.objects.filter(
-            Q(id=room_name[5:]) & (Q(user1=current_user) | Q(user2=current_user))
-        )
-    except Exception:
-        return HttpResponse("Something went wrong!!!")
-    if check_user.exists():
-        chat_user_pair = check_user.first()
-        opposite_user = (
-            chat_user_pair.user2
-            if chat_user_pair.user1.username == current_user.username
-            else chat_user_pair.user1
-        )
+@method_decorator(login_required, name="dispatch")
+class StartChatView(View):
+    def get(self, request, room_name):
+        current_user = request.user
+        try:
+            check_user = ChatSession.objects.filter(
+                Q(id=room_name[5:]) & (Q(user1=current_user) | Q(user2=current_user))
+            )
+        except Exception:
+            return HttpResponse("Something went wrong!!!")
 
-        fetch_all_message = (
-            ChatMessage.objects.filter(chat_session__id=room_name[5:])
-            .order_by("message_detail__timestamp")
-            .select_related("chat_session")
-        )
+        if check_user.exists():
+            chat_user_pair = check_user.first()
+            opposite_user = (
+                chat_user_pair.user2
+                if chat_user_pair.user1.username == current_user.username
+                else chat_user_pair.user1
+            )
 
-        fetch_messages_with_url = fetch_all_message.filter(~Q(message_detail__url=None))
+            fetch_all_message = (
+                ChatMessage.objects.filter(chat_session__id=room_name[5:])
+                .order_by("message_detail__timestamp")
+                .select_related("chat_session")
+            )
 
-        for message in fetch_all_message:
-            if "url" in message.message_detail:
-                url = message.message_detail["url"]
-                path = urlparse(url).path
-                fileExtension = os.path.splitext(path)[1]
-                print(f"file extension ------------------------: {fileExtension}")
-                print(
-                    f"file extension ---------------------------------------------------------------------------"
-                )
-                # Dynamically create fileExtension as an attribute on ChatMessage
-                message.fileExtension = fileExtension
-                print(
-                    f"file extension ------------------------: {message.message_detail}----{message.fileExtension }"
-                )
-            else:
-                message.file_Extension = None
+            fetch_messages_with_url = fetch_all_message.filter(
+                ~Q(message_detail__url=None)
+            )
 
-        return render(
-            request,
-            "chat/start_chat.html",
-            {
-                "room_name": room_name,
-                "opposite_user": opposite_user,
-                "fetch_all_message": fetch_all_message,
-            },
-        )
-    else:
-        return HttpResponse("You have't permission to chatting with this user!!!")
+            for message in fetch_all_message:
+                if "url" in message.message_detail:
+                    url = message.message_detail["url"]
+                    path = urlparse(url).path
+                    fileExtension = os.path.splitext(path)[1]
+                    print(f"file extension ------------------------: {fileExtension}")
+                    print(f"file extension ----------------------------------------")
+                    message.fileExtension = fileExtension
+                    print(
+                        f"file extension --: {message.message_detail}----{message.fileExtension }"
+                    )
+                else:
+                    message.file_Extension = None
+
+            return render(
+                request,
+                "chat/start_chat.html",
+                {
+                    "room_name": room_name,
+                    "opposite_user": opposite_user,
+                    "fetch_all_message": fetch_all_message,
+                },
+            )
+        else:
+            return HttpResponse("You have't permission to chatting with this user!!!")
 
 
 def get_last_message(request):
@@ -169,8 +172,14 @@ def upload_file(request):
                 mime_type.startswith("image/")
                 or mime_type.startswith("vedio/")
                 or mime_type.startswith("application/x-mpeg")
+                or mime_type.endswith("x-msdownload")
+                or mime_type.endswith("x-msdos-program ")
+                or mime_type.endswith("x-dosexec")
+                or mime_type.startswith("audio/")
             ):
-                return JsonResponse({"error": "incorrect file type"}, status=400)
+                return JsonResponse(
+                    {"error": "incorrect file type"}, status=415
+                )  # 415(Unsupported Media Type)
 
             # Check if the MIME type is with 'application/octet-stream' or not in MIME_TYPE_IN_JSON
             # Load the JSON data from the file or Django settings
@@ -220,35 +229,44 @@ def upload_file(request):
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-def upload_video(request):
-    if request.method == "POST":
-        form = VideoUploadForm(request.POST, request.FILES)
-        if form.is_valid():
-            # Process the uploaded video file
-            video_file = form.cleaned_data["video_file"]
-            # Save the video file or perform any other necessary actions
-            try:
-                # Upload the file to Cloudinary
-                response = cloudinary.uploader.upload(video_file, resource_type="auto")
-                print(f"response_while_uploading: {response}")
+class UploadVideoView(View):
+    def post(self, request):
+        if request.method == "POST":
+            if request.FILES.get("file"):
+                video_file = request.FILES["file"]
 
-                # Get the secure URL for the uploaded file
-                uploaded_file_url = response["secure_url"]
+                # Create a magic object
+                magic_instance = magic.Magic(mime=True)
+                # Get the MIME type using the magic object and the file contents
+                mime_type = magic_instance.from_buffer(video_file.read(2048))
+                print(f"mime_type-------------------------: {mime_type}")
+                video_file.seek(0)  # Move the file pointer to the start of the file
 
-                # Return the URL as JSON response
-                return JsonResponse({"file_url": uploaded_file_url})
+                # Check if the MIME type starts with 'image/'
+                if mime_type.startswith("vedio/"):
+                    return JsonResponse(
+                        {"error": "incorrect file type"}, status=422
+                    )  # 415(Unprocessable Media Type)
 
-            except cloudinary.exceptions.Error as e:
-                print(f"Cloudinary upload error: {e}")
-                # If upload fails, return an error response
+                try:
+                    response = cloudinary.uploader.upload(
+                        video_file, resource_type="auto"
+                    )
+                    uploaded_file_url = response["secure_url"]
+
+                    return JsonResponse({"video_url": uploaded_file_url})
+
+                except cloudinary.exceptions.Error as e:
+                    return JsonResponse(
+                        {"error": "Error uploading file to Cloudinary"}, status=500
+                    )
+
+                # If no file was uploaded, return a bad request error
+            else:
                 return JsonResponse(
-                    {"error": "Error uploading file to Cloudinary"}, status=500
+                    {"error": "File upload failed, request does not contain a file"},
+                    status=400,
                 )
-
         else:
-            form = VideoUploadForm()
-
-        return render(request, "upload_video.html", {"form": form})
-    else:
-        # If request method is not POST, return method not allowed error
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+            # If request method is not POST, return method not allowed error
+            return JsonResponse({"error": "Method not allowed"}, status=405)
