@@ -243,29 +243,28 @@ class UploadVideoView(View):
                 video_file.seek(0)  # Move the file pointer to the start of the file
 
                 # Check if the MIME type starts with 'image/'
-                if mime_type.startswith("vedio/"):
+                if mime_type.startswith("video/"):
+                    try:
+                        response = cloudinary.uploader.upload(
+                            video_file, resource_type="video"
+                        )
+                        uploaded_file_url = response["secure_url"]
+
+                        return JsonResponse({"video_url": uploaded_file_url})
+
+                    except cloudinary.exceptions.Error as e:
+                        return JsonResponse(
+                            {"error": "Error uploading file to Cloudinary"}, status=500
+                        )
+
+                # If no file was uploaded, return a bad request error
+                else:
                     return JsonResponse(
                         {"error": "incorrect file type"}, status=422
                     )  # 415(Unprocessable Media Type)
-
-                try:
-                    response = cloudinary.uploader.upload(
-                        video_file, resource_type="auto"
-                    )
-                    uploaded_file_url = response["secure_url"]
-
-                    return JsonResponse({"video_url": uploaded_file_url})
-
-                except cloudinary.exceptions.Error as e:
-                    return JsonResponse(
-                        {"error": "Error uploading file to Cloudinary"}, status=500
-                    )
-
-                # If no file was uploaded, return a bad request error
             else:
                 return JsonResponse(
-                    {"error": "File upload failed, request does not contain a file"},
-                    status=400,
+                    {"error": "Video not recieved from Client"}, status=400
                 )
         else:
             # If request method is not POST, return method not allowed error

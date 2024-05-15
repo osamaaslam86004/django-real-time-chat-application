@@ -62,8 +62,8 @@
         <div id="chat-log" class="scroll">
             {% for msg in fetch_all_message %}
             <p id="{{ msg.id }}" class="chat_box" style="background-color: {{ box_color }}">
-                <small><b class="check_user">{{ msg.user.username }}</b> - {{ msg.message_detail.timestamp |
-                    convert_date | date:"M d'Y f" }}</small><br />
+                <small><b class="check_user">{{ msg.user.username }}</b> -
+                    {{ msg.message_detail.timestamp | convert_date | date:"M d'Y f" }}</small><br />
                 {% if msg.message_detail.msg %}
                 <span style="padding: 7px; color: #ffffff; font-weight: bold;"> • {{ msg.message_detail.msg }}</span>
                 {% elif msg.message_detail.image_url %}
@@ -96,14 +96,9 @@
                 </a>
                 {% endif %}
                 {% else %}
-                <video id="my-video" class="video-js" controls preload="auto" width="75" height="75" poster=""
+                <video id="my-video" class="video-js" controls preload="auto" width="250" height="100" poster=""
                     data-setup="{}">
                     <source src="{{ msg.message_detail.video_url }}" type="video/mp4" />
-                    <p class="vjs-no-js">
-                        To view this video please enable JavaScript, and consider upgrading to a
-                        web browser that
-                        <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
-                    </p>
                 </video>
                 {% endif %}
 
@@ -490,7 +485,16 @@
                     'sessionid': getCookie('sessionid') // Include sessionid
                 }
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        console.log(response.json());
+                        return response.json().then(data => {
+                            throw new Error(data.error);
+                        });
+                    }
+                })
                 .then(data => {
                     // Broadcast the URL to the chat group
                     const message = {
@@ -500,11 +504,15 @@
                     };
                     chatSocket.send(JSON.stringify(message));
                 })
-                .catch(error => console.error('Error uploading VIDEO:', error));
+                .catch(error => {
+                    console.error('Error uploading file:', error.message); // Display the error message
+                    alert('Error uploading file: ' + error.message); // Show an alert with the error message
+                });
         } else {
-            alert('Please select a file WITH VIDEO FILE EXTENSION.');
+            alert('Please select a non-image file.');
         }
     };
+
 
 
     // If no file is selected, send the text messa

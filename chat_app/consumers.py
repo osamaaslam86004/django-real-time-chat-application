@@ -224,6 +224,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Handle FILE messages
             await self.handle_file_message(data)
 
+        elif msg_type == MESSAGE_TYPE["VIDEO_MESSAGE"]:
+            # Handle video messages
+            await self.handle_video_message(data)
+
         elif msg_type == MESSAGE_TYPE["MESSAGE_READ"]:
             msg_id = data["msg_id"]
             await self.msg_read(msg_id)
@@ -284,7 +288,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
-        else:
+        elif event["msg_type"] == MESSAGE_TYPE["FILE_MESSAGE"]:
             # Handle file messages
             await self.send(
                 text_data=json.dumps(
@@ -294,6 +298,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "user": event["user"],
                         "msg_id": event["msg_id"],
                         "key": event["key"],
+                        "timestampe": str(datetime.now()),
+                    }
+                )
+            )
+
+        elif event["msg_type"] == MESSAGE_TYPE["VIDEO_MESSAGE"]:
+            # Handle VIDEO messages
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "msg_type": MESSAGE_TYPE["VIDEO_MESSAGE"],
+                        "video_url": event["video_url"],
+                        "user": event["user"],
+                        "msg_id": event["msg_id"],
                         "timestampe": str(datetime.now()),
                     }
                 )
