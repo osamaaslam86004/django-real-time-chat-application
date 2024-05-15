@@ -57,20 +57,18 @@
 
 <body>
     {% load convert_date %}
-    <h2>🧒 | {{opposite_user.username | title}}
-    </h2>
+    <h2>🧒 | {{ opposite_user.username | title }}</h2>
     <div>
-        <div id=" chat-log" class="scroll">
+        <div id="chat-log" class="scroll">
             {% for msg in fetch_all_message %}
             <p id="{{ msg.id }}" class="chat_box" style="background-color: {{ box_color }}">
-                <small><b class="check_user">{{ msg.user.username }}</b> -
-                    {{ msg.message_detail.timestamp |convert_date|date:"M d'Y f" }}</small>
-                <br />
+                <small><b class="check_user">{{ msg.user.username }}</b> - {{ msg.message_detail.timestamp |
+                    convert_date | date:"M d'Y f" }}</small><br />
                 {% if msg.message_detail.msg %}
                 <span style="padding: 7px; color: #ffffff; font-weight: bold;"> • {{ msg.message_detail.msg }}</span>
                 {% elif msg.message_detail.image_url %}
                 <img id="img_{{ msg.id }}" src="{{ msg.message_detail.image_url }}">
-                {% elif msg.message_detail.file_url%}
+                {% elif msg.message_detail.file_url %}
                 <!-- Wrap the icon within an anchor tag -->
                 {% if msg.fileExtension == '.docx' or msg.fileExtension == '.doc' %}
                 <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
@@ -91,31 +89,29 @@
                 {% elif msg.fileExtension == '.txt' %}
                 <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
                     <img src="{% static 'images/file-solid.svg' %}" style="width: 75px; height:75px">
-                    {% else %}
-                    <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
-                        <img src="{% static 'images/file-regular.svg' %}" style="width: 75px; height:75px">
-                    </a>
-                    {% endif %}
-                    {% else %}
-                    <video id="my-video" class="video-js" controls preload="auto" width="75" height="75" poster=""
-                        data-setup="{}">
-                        <source src="{{msg.message_detail.video_url}}" type="video/mp4" />
-                        <p class="vjs-no-js">
-                            To view this video please enable JavaScript, and consider upgrading to a
-                            web browser that
-                            <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
-                        </p>
-                    </video>
-                    {% endif %}
+                </a>
+                {% else %}
+                <a href="{{ msg.message_detail.url }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{% static 'images/file-regular.svg' %}" style="width: 75px; height:75px">
+                </a>
+                {% endif %}
+                {% else %}
+                <video id="my-video" class="video-js" controls preload="auto" width="75" height="75" poster=""
+                    data-setup="{}">
+                    <source src="{{ msg.message_detail.video_url }}" type="video/mp4" />
+                    <p class="vjs-no-js">
+                        To view this video please enable JavaScript, and consider upgrading to a
+                        web browser that
+                        <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+                    </p>
+                </video>
+                {% endif %}
 
-
-
-                    <br />
-                    {% if msg.user == request.user %}
-                    <small id="as_read" style="padding-left: 95%; 
-                {% if msg.message_detail.read %} 
-                color: rgb(8, 255, 8);{% else %}color: #bbb8b8{% endif %} font-weight: bold;">✔✔</small>
-                    {% endif %}
+                <br />
+                {% if msg.user == request.user %}
+                <small id="as_read"
+                    style="padding-left: 95%; {% if msg.message_detail.read %} color: rgb(8, 255, 8);{% else %}color: #bbb8b8{% endif %} font-weight: bold;">✔✔</small>
+                {% endif %}
             </p>
             {% endfor %}
         </div><br>
@@ -135,14 +131,9 @@
             <input id="image-input" type="file" style="display: none;"> <!-- Add image-type input field -->
             <input id="file-input" type="file" style="display: none;"> <!-- Add non-image type input field -->
             <input type="file" id="video-input" name="video" accept="video/*" style="display: none;">
-
-
         </div>
-
-
     </div>
-    {{ room_name|json_script:"room_name" }}
-
+    {{ room_name | json_script:"room_name" }}
 </body>
 <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 
